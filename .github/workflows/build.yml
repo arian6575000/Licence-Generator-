@@ -1,0 +1,109 @@
+name: Unzip and Build
+
+# Do tareeqe:
+#  1) Repo mein sirf license-generator.zip daal dein (root par) aur push karein: workflow khud unzip kar legi.
+#  2) Ya poora project folder seedha repo mein rakhein (package.json root par ya kisi folder mein).
+# Is file ko repo ke root mein .github/workflows/build.yml par rakhein.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      dir: ${{ steps.find.outputs.dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip project (agar zip maujood ho)
+        run: |
+          zip_file=$(find . -maxdepth 2 -name "license-generator*.zip" -not -path "./node_modules/*" | head -n 1)
+          if [ -n "$zip_file" ]; then
+            echo "Unzipping $zip_file"
+            unzip -q -o "$zip_file" -d _unzipped
+          else
+            echo "Zip nahi mili, repo ka code hi use hoga"
+          fi
+      - name: Project folder dhoondhein
+        id: find
+        run: |
+          pkg=$(find . -name package.json -not -path "*/node_modules/*" -not -path "./.git/*" -print0 \
+            | xargs -0 grep -l '"name": "license-generator"' | head -n 1)
+          [ -n "$pkg" ] || { echo "license-generator ka package.json nahi mila"; exit 1; }
+          dir=$(dirname "$pkg")
+          echo "Project: $dir"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+      - name: Project ko artifact bana kar agle jobs ko dein
+        run: tar -czf project.tgz -C "${{ steps.find.outputs.dir }}" --exclude=node_modules --exclude=.git .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: project-source
+          path: project.tgz
+          retention-days: 1
+
+  test:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: project-source }
+      - run: mkdir app && tar -xzf project.tgz -C app
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install, typecheck, test
+        working-directory: app
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm test
+
+  android-apk:
+    needs: [prepare, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: project-source }
+      - run: mkdir app && tar -xzf project.tgz -C app
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: Install
+        working-directory: app
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Android project generate (prebuild)
+        working-directory: app
+        run: npx expo prebuild --platform android --no-install
+      - name: APK build
+        working-directory: app/android
+        run: ./gradlew assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LicenseGenerator-apk
+          path: app/android/app/build/outputs/apk/release/*.apk
+
+  windows-exe:
+    needs: [prepare, test]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: project-source }
+      - run: |
+          mkdir app
+          tar -xzf project.tgz -C app
+        shell: bash
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install
+        working-directory: app
+        run: npm install --no-audit --no-fund
+      - name: EXE build
+        working-directory: app
+        run: npm run exe:build
+        env:
+          CI: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LicenseGenerator-exe
+          path: app/release/*.exe
