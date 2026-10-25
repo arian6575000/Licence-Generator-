@@ -1,0 +1,8 @@
+{
+  "appId": "com.arian6575000.licensegenerator",
+  "productName": "License Generator",
+  "directories": { "output": "release" },
+  "files": ["electron/main.js", "dist/**/*", "package.json"],
+  "extraMetadata": { "main": "electron/main.js" },
+  "win": { "target": "portable", "artifactName": "LicenseGenerator-${version}.exe" }
+}
