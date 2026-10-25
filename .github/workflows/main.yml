@@ -1,1 +1,96 @@
-abc
+name: Unzip, Build APK and EXE
+
+# Repo mein license-generator.zip hai. Yeh workflow:
+#  1) zip ko unzip kar ke project files repo ke root mein commit kar deti hai (sirf ek dafa),
+#  2) typecheck + tests chalati hai,
+#  3) Android APK aur Windows EXE banati hai (Actions run ke Artifacts mein milti hain).
+# Is file ko repo mein .github/workflows/main.yml par rakhein (purani main.yml replace karein).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip into repo root and commit
+        run: |
+          if [ -f package.json ]; then
+            echo "Project pehle se unzip hai, skip"
+            exit 0
+          fi
+          zip_file=$(ls license-generator*.zip 2>/dev/null | head -n 1)
+          [ -n "$zip_file" ] || { echo "ERROR: repo ke root mein license-generator.zip nahi mili"; exit 1; }
+          rm -rf _tmp && mkdir _tmp
+          unzip -q -o "$zip_file" -d _tmp
+          pkg=$(find _tmp -name package.json -not -path "*/node_modules/*" | head -n 1)
+          [ -n "$pkg" ] || { echo "ERROR: zip ke andar package.json nahi mila"; exit 1; }
+          src=$(dirname "$pkg")
+          # .github ko chhor dein: GITHUB_TOKEN workflow files commit nahi kar sakta
+          tar -C "$src" --exclude=.github -cf - . | tar -xf -
+          rm -rf _tmp
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Unzip license generator project"
+          git push
+
+  test:
+    needs: unzip
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install, typecheck, test
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm test
+
+  android-apk:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: Install
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Android project generate (prebuild)
+        run: npx expo prebuild --platform android --no-install
+      - name: APK build
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LicenseGenerator-apk
+          path: android/app/build/outputs/apk/release/*.apk
+
+  windows-exe:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: EXE build
+        run: npm run exe:build
+        env:
+          CI: "1"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LicenseGenerator-exe
+          path: release/*.exe
