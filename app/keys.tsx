@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { generateKeyPair, publicKeyFromSecret } from "../src/lib/licenseCore";
+import { generateKeyPair, isValidSeedHex, publicKeyFromSeed } from "../src/lib/licenseCore";
 import { deleteKeys, loadKeys, saveKeys } from "../src/lib/keys";
 import { shareText } from "../src/lib/share";
 import type { KeyPair } from "../src/lib/types";
@@ -22,24 +22,21 @@ export default function Keys() {
     if (!keys) return make();
     Alert.alert(
       "Purani key replace hogi",
-      "Is se pehle ke saare licenses nayi public key se verify nahi honge. Pehle backup lein. Jari rakhein?",
+      "Purani key se bane licenses nayi public key se verify nahi honge. Pehle backup lein. Jari rakhein?",
       [{ text: "Cancel", style: "cancel" }, { text: "Replace", style: "destructive", onPress: make }]
     );
   }
 
   async function importKey() {
-    try {
-      const sk = importText.trim();
-      const pk = publicKeyFromSecret(sk); // throws if invalid
-      await saveKeys({ publicKey: pk, secretKey: sk });
-      setKeys({ publicKey: pk, secretKey: sk });
-      setImportText("");
-    } catch {
-      Alert.alert("Error", "Private key sahi nahi hai");
-    }
+    const hex = importText.trim().toLowerCase();
+    if (!isValidSeedHex(hex)) return Alert.alert("Error", "Private key 64 hex characters ki honi chahiye");
+    const kp = { privateKeyHex: hex, publicKeyHex: publicKeyFromSeed(hex) };
+    await saveKeys(kp);
+    setKeys(kp);
+    setImportText("");
   }
 
-  async function remove() {
+  function remove() {
     Alert.alert("Key delete?", "Backup ke baghair delete karne par key wapas nahi aayegi.", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: async () => { await deleteKeys(); setKeys(null); } },
@@ -49,10 +46,10 @@ export default function Keys() {
   return (
     <ScrollView style={s.page} contentContainerStyle={{ padding: 16, gap: 12 }}>
       <View style={s.card}>
-        <Text style={s.h}>Public key (client apps mein lagayen)</Text>
-        <Text selectable style={s.mono}>{keys?.publicKey ?? "— maujood nahi —"}</Text>
+        <Text style={s.h}>Public key (hex), client apps mein lagayen</Text>
+        <Text selectable style={s.mono}>{keys?.publicKeyHex ?? "— maujood nahi —"}</Text>
         {keys && (
-          <Pressable style={s.link} onPress={() => shareText(keys.publicKey)}>
+          <Pressable style={s.link} onPress={() => shareText(keys.publicKeyHex)}>
             <Text style={{ color: C.primary }}>Copy / Share public key</Text>
           </Pressable>
         )}
@@ -66,22 +63,23 @@ export default function Keys() {
         <View style={[s.card, { borderColor: C.danger }]}>
           <Text style={[s.h, { color: C.danger }]}>Private key backup</Text>
           <Text style={{ color: C.sub }}>
-            Yeh key kisi ko na dein aur client apps mein kabhi na lagayen. Backup kisi mehfooz jagah rakhein
-            (password manager). Yeh kho gayi to purani public key ke licenses nahi ban sakenge.
+            Yeh key kisi ko na dein, kisi repo ya README mein na likhein aur client apps mein kabhi na lagayen.
+            Password manager mein rakhein. Kho gayi to is key ke licenses dobara nahi ban sakenge.
           </Text>
-          <Pressable style={s.link} onPress={() => shareText(keys.secretKey)}>
+          <Pressable style={s.link} onPress={() => shareText(keys.privateKeyHex)}>
             <Text style={{ color: C.danger }}>Private key export (Copy / Share)</Text>
           </Pressable>
         </View>
       )}
 
       <View style={s.card}>
-        <Text style={s.h}>Private key import (restore)</Text>
+        <Text style={s.h}>Private key import (restore ya RetailX wali key)</Text>
+        <Text style={{ color: C.sub }}>RetailX Hub ki ED25519_PRIVATE_KEY_HEX (64 hex characters) yahan paste karein to purane RetailX clients ke saath compatible licenses banenge.</Text>
         <TextInput
           style={s.input}
           value={importText}
           onChangeText={setImportText}
-          placeholder="Backup wali private key paste karein"
+          placeholder="64 hex characters"
           autoCapitalize="none"
           autoCorrect={false}
           multiline
@@ -89,9 +87,7 @@ export default function Keys() {
         <Pressable style={s.link} onPress={importKey}><Text style={{ color: C.primary }}>Import</Text></Pressable>
       </View>
 
-      {keys && (
-        <Pressable style={s.link} onPress={remove}><Text style={{ color: C.danger }}>Key delete karein</Text></Pressable>
-      )}
+      {keys && <Pressable style={s.link} onPress={remove}><Text style={{ color: C.danger }}>Key delete karein</Text></Pressable>}
     </ScrollView>
   );
 }

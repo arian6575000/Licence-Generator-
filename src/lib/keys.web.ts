@@ -1,8 +1,7 @@
-// Web / Electron (exe): stored in the app's local storage.
-// For the exe this lives in the Electron profile folder of the Windows user.
+// Web / Electron (exe): stored in the app's local storage (Electron profile folder of the Windows user).
 import type { KeyPair } from "./types";
 
-const K = "gln_keypair_v1";
+const K = "mpos_keypair_v1";
 
 export async function loadKeys(): Promise<KeyPair | null> {
   const s = localStorage.getItem(K);

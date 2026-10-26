@@ -1,185 +1,117 @@
-# License System: Integration Guide
+# License Generator: Guide
 
-Is guide mein likha hai ke License Generator app ko kaise chalana hai aur apni client apps (APK aur exe) mein license check kaise lagana hai.
+Yeh offline license generator RetailX License Hub ke **wahi license format** par chalta hai (`MPOS-LIC-...`, Ed25519).
+Farq sirf yeh hai ke yahan server, heartbeat ya killswitch nahi: sirf license banta hai, aur sab kuch offline hai.
 
-## 1. Poora nizam ek nazar mein
+## 1. License kya hota hai
 
 ```
-Client app                        Generator app (sirf aap ke paas)
------------                       --------------------------------
-Device ID banati hai   ------->    Device ID + App code + Name + Muddat
-(hardware hash)                    Private key se sign karta hai
-                       <-------    License string  (GLN1.xxxx.yyyy)
-Public key se verify:
- - signature theek?
- - app code match?
- - device ID match?
- - muddat khatam to nahi?
+MPOS-LIC-<base64url(payload JSON)>.<base64url(Ed25519 signature)>
 ```
 
-- **Private key** sirf generator mein rehti hai. Isse license banta hai.
-- **Public key** client apps mein lagti hai. Isse sirf verify hota hai, license nahi ban sakta.
-- Sab kuch **offline** hai, internet ki zaroorat nahi.
-- License ek hi device aur ek hi app ke liye valid hota hai.
+Payload (RetailX jaisa):
 
-License string ka format: `GLN1.<payload base64url>.<signature base64url>`
+| Field | Matlab |
+|---|---|
+| `machine_id` | Client ke device / hardware ki ID |
+| `client_name` | Client ka naam |
+| `plan_name`, `max_users` | Plan aur users ki had |
+| `created_at`, `expiry_date`, `is_lifetime` | Muddat (lifetime ke liye `2099-12-31`) |
+| `features` | Feature toggles, jaise `"pos.billing": true` |
+| `project_code`, `license_id` | Sirf apne projects (DarziHub waghera) ke licenses mein |
 
-Payload mein: `id, app, did (device id), name, iat (issue time), exp (expiry, 0 = lifetime)`.
+RetailX ke 4 projects ke licenses mein `project_code` nahi hota, taake unka purana code bina badlaav ke chale.
+Is baat ko RetailX ke apne Python code (`CryptoService.verify_license`) se dono taraf test kiya gaya hai:
+generator ka license wahan verify hota hai, aur wahan ka license generator verify karta hai.
 
-## 2. Generator app chalana aur build karna
+## 2. Pehla setup (ek dafa)
 
-Project folder mein (Node.js installed ho):
+1. App kholein, **Keys** tab par jayen.
+2. Do raaste hain:
+   - **Naye projects ke liye (tajweez):** "Key pair banayen" dabayen.
+   - **Purane RetailX clients ke liye:** un ki public key jis private key se bani thi, wohi **Import** karein (64 hex characters). Warna purane clients naye licenses ko reject kar denge.
+3. **Public key (hex)** copy karein. Yeh har client app mein lagani hai.
+4. **Private key export** se backup lein, kisi password manager mein rakhein.
+   Private key kabhi README, repo, chat ya client app mein na likhein.
 
-```bash
-npm install
-npm test            # license logic ke tests
-npm run android     # Expo Go / phone par chalane ke liye
-npm run web         # browser mein test ke liye
-```
+## 3. Roz ka kaam
 
-**APK banana (EAS):**
+1. **Generate** tab: Project chunein (RetailX 360 Web, RetailX APK, D POS, Pharmacy, DarziHub, BP Journey, ContractHub).
+2. RetailX 360 Web ke liye plan chunein (Starter, Standard, Enterprise ERP). Features automatically bhar jate hain.
+3. Client ka naam, phone (sirf aap ke record ke liye), aur client ki Machine / Device ID likhein.
+4. Muddat chunein (7/30/90/180 din, 1 saal, lifetime ya custom date).
+5. Zarurat ho to **Features badlein** se module-wise toggles on/off karein, ya apna custom feature key add karein.
+6. **License generate karein**, phir Copy / Share. Client ko bhej dein.
+7. **History** tab mein har license ka record, search, project filter aur CSV export hai.
 
-```bash
-npm i -g eas-cli
-eas login
-eas build -p android --profile preview     # APK ban kar download link milta hai
-```
+**Projects** tab mein naya project add ho sakta hai, ya purane ke default features aur max users badal sakte hain.
 
-**Windows exe banana** (Windows machine par):
+## 4. Client apps mein license check lagana
 
-```bash
-npm install
-npm run exe:build      # release/ folder mein portable .exe banta hai
-```
+Sab clients ek hi kaam karte hain: `MPOS-LIC-` license ko public key se verify karte hain, phir machine ID, project code, muddat aur clock check karte hain.
 
-Test ke liye bina build ke: `npm run web:export` phir `npm run exe:dev`.
+### 4.1 Expo / React Native (APK)
 
-Note: exe mein keys aur history Electron ke local storage mein save hoti hain (Windows user ke profile mein). Is liye exe mein bhi key ka **backup** zaroor lein.
+Files `client-sdk/expo/` mein hain.
 
-## 3. Pehli baar ka setup (sirf ek dafa)
-
-1. Generator kholein, **Keys** tab par jayen.
-2. **Key pair banayen** dabayen.
-3. **Public key** copy karein. Yeh har client app mein lagani hai.
-4. **Private key export** se backup lein aur password manager ya kisi mehfooz jagah rakhein.
-   Yeh kho gayi to nayi key banani paregi aur purane saare licenses kaam nahi karenge.
-5. Agar dusre phone ya exe mein bhi generator chalana ho to wahan Keys tab ke **Import** mein wahi private key paste karein, taake dono jagah se same public key ke licenses banen.
-
-**Ek hi key pair sab apps ke liye.** Har app ko alag *App code* (jaise `darzihub`, `bpjourney`, `contracthub`) milta hai, is liye ek app ka license dusri app mein nahi chalega.
-
-## 4. Client app: Expo / React Native (APK)
-
-Files `client-sdk/expo/` mein hain: `licenseCore.ts`, `deviceId.ts`, `licenseClient.ts`, `LicenseGate.tsx`.
-
-**Steps:**
-
-1. Packages:
-   ```bash
-   npx expo install expo-application expo-device expo-crypto expo-secure-store
-   npm i tweetnacl tweetnacl-util
-   ```
-2. `client-sdk/expo/` ki chaaron files apni app ke `src/license/` mein copy karein.
-3. `licenseClient.ts` mein do cheezein badlein:
+1. `npx expo install expo-secure-store expo-application expo-device expo-crypto` aur `npm i tweetnacl tweetnacl-util`
+2. Chaaron files apni app ke `src/license/` mein copy karein.
+3. `licenseClient.ts` mein badlein:
    ```ts
-   export const APP_CODE = "darzihub";      // generator mein bhi yehi app code likhna hai
-   export const PUBLIC_KEY = "....";        // Keys tab se copy ki hui public key
+   export const PROJECT_CODE = "darzihub";                    // Projects tab wala code
+   export const PUBLIC_KEY_HEX = "....";                      // Keys tab ki public key
    ```
-4. Root layout (`app/_layout.tsx`) mein app ko gate mein lapetein:
+4. Root layout mein:
    ```tsx
    import LicenseGate from "../src/license/LicenseGate";
-
    export default function Layout() {
-     return (
-       <LicenseGate>
-         <Stack />   {/* aap ki purani layout */}
-       </LicenseGate>
-     );
+     return <LicenseGate><Stack /></LicenseGate>;
    }
    ```
-5. Build karein. App pehli dafa **Activation** screen dikhayegi jis par Device ID hogi.
+5. App ke andar plan aur features: `const lic = useLicense(); lic?.payload.features["premium"]`
+6. Muddat khatam hone se 3 din pehle app khud warning dikhati hai.
 
-Dhyan dein: `licenseCore.ts` mein signing ke functions bhi hain, lekin woh private key ke baghair kuch nahi kar sakte. Private key client app mein kabhi na rakhein.
+### 4.2 Electron / Node exe
 
-## 5. Client app: Electron / Node exe
+Files `client-sdk/node/`: `deviceId.js`, `license.js`. `npm i tweetnacl`, phir `PROJECT_CODE` aur `PUBLIC_KEY_HEX` badlein.
 
-Files `client-sdk/node/` mein hain: `deviceId.js`, `license.js`.
+```js
+const { makeLicense } = require("./license/license");
+const lic = makeLicense(app.getPath("userData"));
+const r = lic.checkSaved();
+if (!r.ok) { /* activation window: lic.deviceId() dikhayen, lic.activate(text) se check karein */ }
+else if (r.can("accounting")) { /* feature check */ }
+```
 
-1. `npm i tweetnacl tweetnacl-util`
-2. Dono files apni app mein copy karein.
-3. `license.js` mein `APP_CODE` aur `PUBLIC_KEY` badlein.
-4. Electron main process mein:
-   ```js
-   const { app } = require("electron");
-   const { makeLicense } = require("./license/license");
+### 4.3 .NET exe
 
-   app.whenReady().then(() => {
-     const lic = makeLicense(app.getPath("userData"));
-     const r = lic.checkSaved();
-     if (!r.ok) {
-       // Activation window dikhayen: lic.deviceId() dikhayen,
-       // user ka paste kiya license lic.activate(text) se check karein.
-       // Jab tak r.ok na ho, asal window na kholein.
-     }
-   });
-   ```
-5. Muddat ke dauran bhi check chalate rahein: app start par aur har kuch ghanton baad `lic.checkSaved()` dobara chalayen.
+File `client-sdk/dotnet/LicenseCheck.cs`, NuGet `BouncyCastle.Cryptography`.
 
-## 6. Client app: .NET exe (WinForms / WPF)
+```csharp
+var r = LicenseCheck.CheckSaved();
+if (!r.Ok) { /* ActivationForm: LicenseCheck.GetMachineId() dikhayen, LicenseCheck.Activate(text) */ }
+bool acc = LicenseCheck.Can(r, "accounting");
+```
 
-File: `client-sdk/dotnet/LicenseCheck.cs`
+### 4.4 RetailX ke purane projects
 
-1. NuGet: `BouncyCastle.Cryptography`
-2. File project mein add karein, `AppCode` aur `PublicKey` badlein.
-3. Startup par:
-   ```csharp
-   var r = LicenseCheck.CheckSaved();
-   if (!r.Ok)
-   {
-       // ActivationForm dikhayen: LicenseCheck.GetDeviceId() dikhayen,
-       // textbox ka license LicenseCheck.Activate(text) se check karein.
-       // Fail ho to application band kar dein.
-   }
-   ```
+Un ka verify code pehle se maujood hai (RetailX ki `CryptoService.verify_license`). Sirf unki public key wohi rehni chahiye jis private key se aap ab generate karte hain.
+Machine ID wahi likhein jo RetailX software khud dikhata hai (hardware hash wali ID).
 
-Device ID ka algorithm har platform par alag ho sakta hai, koi masla nahi. Zaroori sirf yeh hai ke ek app apni hi Device ID banaye aur apni hi verify kare. Format hamesha `XXXX-XXXX-XXXX-XXXX-XXXX` (20 hex characters) hona chahiye.
+## 5. Build
 
-## 7. Customer ke saath roz ka tareeqa
+**Local:** `npm install`, `npm test`, `npm run web` (browser mein test).
 
-1. Customer app kholta hai, activation screen par apni **Device ID** dekhta hai aur aap ko bhejta hai.
-2. Aap generator mein **App code**, **Device ID**, **Customer name**, **Muddat** bharte hain.
-3. **License generate karein** dabayen, phir **Copy / Share** se customer ko bhej dein.
-4. Customer license paste kar ke **Activate** dabata hai.
-5. History tab mein har license ka record rehta hai (search aur CSV export ke saath).
-6. Muddat ke baad app khud lock ho jati hai. Dobara chalane ke liye naya license generate karein (naya record ban jayega).
+**GitHub (zip se):**
+1. Repo ke root mein sirf `license-generator.zip` rakhein. Zip ke andar files seedhi root par honi chahiyen (koi upar wala folder nahi).
+2. Actions > **Extract ZIP in Repository Root** > Run workflow. Yeh purani files hata kar zip khol deti hai aur phir `android-apk.yml` chalati hai.
+3. `.github/workflows/android-apk.yml` APK aur Windows exe banati hai (Artifacts aur Releases mein milti hain).
+4. Repo ke purane `main.yml`, `build.yml`, `build-1.yml` delete kar dein, warna har push par woh bhi chalti hain.
 
-## 8. Zaroori baatein aur hadood
+## 6. Hadood aur ehtiyat
 
-- **Private key ka backup** sab se zaroori hai.
-- Agar user phone ki date peeche kar de, to app pichla chalne ka waqt yaad rakhti hai aur "clock" error de kar lock kar deti hai. Is ke liye app kam az kam ek dafa valid license ke saath chal chuki ho.
-- **Android ID** factory reset par badal jati hai, aur Android 8+ par har app ki signing key ke hisaab se alag hoti hai. Is liye reset ke baad naya license dena parega, aur har app ki Device ID alag hogi (license bhi app ke hisaab se hi bante hain, is liye yeh theek hai).
-- Windows par Device ID motherboard reinstall ya Windows dobara install karne par badal sakti hai.
-- Offline license 100% crack-proof nahi hota. Jo shakhs app ka code badal kar check hata de, woh bypass kar sakta hai. Rukawat barhane ke liye: release build, JS obfuscation (APK), .NET obfuscator (exe), aur license check ko app mein ek se zyada jagah rakhna. Ye cheezein casual copying rokti hain.
-- Licenses ki history generator ke apne device mein hoti hai. Phone/exe ka data saaf hone par history bhi jati hai, is liye CSV export kabhi kabhi lete rahein.
-
-## 9. Error ki wajah
-
-| Reason | Matlab |
-|---|---|
-| `format` | License khali ya galat paste hua |
-| `signature` | License tampered hai ya dusri key se bana hai (public key check karein) |
-| `app` | App code generator aur client mein alag hai |
-| `device` | License kisi aur device ke liye bana hai |
-| `expired` | Muddat khatam |
-| `clock` | Device ki date peeche ki gayi hai |
-
-## 10. GitHub Actions se automatic build (unzip + APK + exe)
-
-1. Naya GitHub repo banayen. Repo ke root mein `license-generator.zip` rakhein.
-2. `build.yml` ko repo mein `.github/workflows/build.yml` par rakhein.
-3. Push karein (ya Actions tab mein "Run workflow" dabayen).
-4. Workflow zip ko khud unzip karti hai, typecheck aur tests chalati hai, phir do files banati hai:
-   - `LicenseGenerator-apk` (Android APK)
-   - `LicenseGenerator-exe` (Windows portable exe)
-5. Dono run ke Artifacts section se download karein.
-
-APK debug keystore se sign hoti hai, jo install aur andar ke use ke liye theek hai. Play Store ke liye apni release keystore alag se lagani paregi.
+- **Offline hone ki wajah se live control nahi:** killswitch, license ko door se block karna, ya expiry badhana mumkin nahi. Muddat badhani ho to naya license generate karein. Yeh sab RetailX Hub (online server) ka kaam hai.
+- Date peeche karne se bachne ke liye client "last seen" yaad rakhta hai.
+- Offline license casual copying rokta hai, code patch karne wale se 100% nahi bachata (obfuscation madadgar hai).
+- Private key ka backup lein. Kho gayi to us key ke naye licenses nahi ban sakenge.
+- Android ID factory reset par badal jati hai, is liye reset ke baad naya license dena parta hai.

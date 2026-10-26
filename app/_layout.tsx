@@ -30,6 +30,13 @@ export default function Layout() {
           }}
         />
         <Tabs.Screen
+          name="projects"
+          options={{
+            title: "Projects",
+            tabBarIcon: ({ color, size }) => <Ionicons name="apps-outline" color={color as string} size={size} />,
+          }}
+        />
+        <Tabs.Screen
           name="keys"
           options={{
             title: "Keys",

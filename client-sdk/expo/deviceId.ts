@@ -15,19 +15,11 @@ export async function getDeviceId(): Promise<string> {
       ? Application.getAndroidId() ?? ""
       : (await Application.getIosIdForVendorAsync()) ?? "";
 
-  // Only values that do not change with OS updates.
   const parts = [
-    Platform.OS,
-    stableId,
-    Device.brand ?? "",
-    Device.manufacturer ?? "",
-    Device.modelName ?? "",
+    Platform.OS, stableId, Device.brand ?? "", Device.manufacturer ?? "", Device.modelName ?? "",
     (Device.supportedCpuArchitectures ?? []).join(","),
   ];
-  const hex = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    "GLN-DEVID-v1|" + parts.join("|")
-  );
+  const hex = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, "MPOS-DEVID-v1|" + parts.join("|"));
   cached = formatDeviceIdFromHex(hex.toUpperCase()); // XXXX-XXXX-XXXX-XXXX-XXXX
   return cached;
 }

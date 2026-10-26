@@ -2,7 +2,7 @@
 import * as SecureStore from "expo-secure-store";
 import type { KeyPair } from "./types";
 
-const K = "gln_keypair_v1";
+const K = "mpos_keypair_v1";
 
 export async function loadKeys(): Promise<KeyPair | null> {
   const s = await SecureStore.getItemAsync(K);

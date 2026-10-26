@@ -1,11 +1,19 @@
+import type { Payload } from "./licenseCore";
+
 export type LicenseRecord = {
-  id: string;
-  app: string;
-  deviceId: string;
-  name: string;
+  id: string; // local record id
+  projectCode: string;
+  projectName: string;
+  clientName: string;
+  phone: string; // not signed, for your records
+  machineId: string;
+  planName: string;
+  maxUsers: number;
   issuedAt: number; // unix seconds
-  expiresAt: number; // 0 = lifetime
+  expiryDate: string; // YYYY-MM-DD
+  isLifetime: boolean;
   license: string;
+  payload: Payload;
 };
 
-export type KeyPair = { publicKey: string; secretKey: string };
+export type KeyPair = { privateKeyHex: string; publicKeyHex: string };
