@@ -2,13 +2,28 @@
   "expo": {
     "name": "License Generator",
     "slug": "license-generator",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "scheme": "licensegen",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "plugins": ["expo-router", "expo-secure-store", "expo-sqlite"],
-    "android": { "package": "com.arian6575000.licensegenerator" },
-    "web": { "bundler": "metro", "output": "single" },
-    "experiments": { "typedRoutes": false }
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Unlock License Generator"
+        }
+      ]
+    ],
+    "android": {
+      "package": "com.arian6575000.licensegenerator",
+      "versionCode": 2,
+      "allowBackup": false
+    },
+    "experiments": {
+      "typedRoutes": false
+    }
   }
 }

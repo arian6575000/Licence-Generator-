@@ -1,49 +1,26 @@
 import "../src/lib/rng";
-import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { ActivityIndicator, View } from "react-native";
+import { AppProvider, useApp } from "../src/state";
+import Login from "../src/screens/Login";
+import { PinSetup, PinUnlock } from "../src/screens/PinScreen";
 import { C } from "../src/theme";
+
+function Gate() {
+  const a = useApp();
+  if (!a.ready) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: C.bg }}><ActivityIndicator color={C.primary} /></View>;
+  if (a.hasPin && a.locked) return <PinUnlock />;
+  if (!a.session) return <Login />;
+  if (!a.hasPin) return <PinSetup />;
+  return <Slot />;
+}
 
 export default function Layout() {
   return (
-    <>
+    <AppProvider>
       <StatusBar style="dark" />
-      <Tabs
-        screenOptions={{
-          headerStyle: { backgroundColor: C.card },
-          headerTitleStyle: { color: C.text },
-          tabBarActiveTintColor: C.primary,
-        }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: "Generate",
-            tabBarIcon: ({ color, size }) => <Ionicons name="key-outline" color={color as string} size={size} />,
-          }}
-        />
-        <Tabs.Screen
-          name="history"
-          options={{
-            title: "History",
-            tabBarIcon: ({ color, size }) => <Ionicons name="time-outline" color={color as string} size={size} />,
-          }}
-        />
-        <Tabs.Screen
-          name="projects"
-          options={{
-            title: "Projects",
-            tabBarIcon: ({ color, size }) => <Ionicons name="apps-outline" color={color as string} size={size} />,
-          }}
-        />
-        <Tabs.Screen
-          name="keys"
-          options={{
-            title: "Keys",
-            tabBarIcon: ({ color, size }) => <Ionicons name="shield-checkmark-outline" color={color as string} size={size} />,
-          }}
-        />
-      </Tabs>
-    </>
+      <Gate />
+    </AppProvider>
   );
 }

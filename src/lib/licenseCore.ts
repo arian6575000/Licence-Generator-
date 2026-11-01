@@ -103,6 +103,7 @@ export type BuildArgs = {
   expiry: { days: number } | { date: string } | "lifetime";
   idFormat: "any" | "hex20";
   project?: { code: string; legacy: boolean };
+  licenseId?: string; // keep the same id when renewing
   now?: Date;
 };
 
@@ -145,7 +146,7 @@ export function buildPayload(a: BuildArgs): Payload {
   };
   if (a.project && !a.project.legacy) {
     p.project_code = a.project.code;
-    p.license_id = newLicenseId();
+    p.license_id = a.licenseId ?? newLicenseId();
   }
   return p;
 }
@@ -205,4 +206,17 @@ export function verifyLicense(
 
 export function hasFeature(p: Payload, key: string): boolean {
   return p.features?.[key] === true;
+}
+
+// Reads the payload of a license WITHOUT checking the signature (display only, never for trust decisions).
+export function decodePayloadUnsafe(license: string): Payload | null {
+  try {
+    const key = license.trim();
+    if (!key.startsWith(PREFIX)) return null;
+    const parts = key.slice(PREFIX.length).split(".");
+    if (parts.length !== 2) return null;
+    return JSON.parse(new TextDecoder().decode(unb64u(parts[0]))) as Payload;
+  } catch {
+    return null;
+  }
 }

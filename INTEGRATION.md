@@ -1,56 +1,53 @@
-# License Generator: Guide
+# License Generator v2: Guide
 
-Yeh offline license generator RetailX License Hub ke **wahi license format** par chalta hai (`MPOS-LIC-...`, Ed25519).
-Farq sirf yeh hai ke yahan server, heartbeat ya killswitch nahi: sirf license banta hai, aur sab kuch offline hai.
+Android app jo **sirf do kaam** karti hai: **clients banana** aur un ke liye **licenses generate karna**.
+Projects, plans, features aur releases Hub se aate hain aur app mein sirf dekhne ke liye hain.
+License format wahi hai (`MPOS-LIC-<payload>.<Ed25519 signature>`), isliye purani RetailX apps ke liye kuch nahi badalta.
 
-## 1. License kya hota hai
+## 1. Pehla setup (ek dafa, internet chahiye)
 
-```
-MPOS-LIC-<base64url(payload JSON)>.<base64url(Ed25519 signature)>
-```
+1. App kholein, **Hub URL**, username, password likhein, **Login**. (Is phone ko Hub mein "device" ke taur par register karta hai.)
+2. **PIN** banayen (4-8 digits). Keys is phone par hain, isliye app PIN ke peeche rehti hai. Fingerprint/face Settings mein on kar sakte hain.
+3. App khud sync karti hai: Hub se signing keys (Android Keystore mein), projects, plans, releases aati hain.
 
-Payload (RetailX jaisa):
+## 2. Roz ka kaam (offline bhi)
 
-| Field | Matlab |
-|---|---|
-| `machine_id` | Client ke device / hardware ki ID |
-| `client_name` | Client ka naam |
-| `plan_name`, `max_users` | Plan aur users ki had |
-| `created_at`, `expiry_date`, `is_lifetime` | Muddat (lifetime ke liye `2099-12-31`) |
-| `features` | Feature toggles, jaise `"pos.billing": true` |
-| `project_code`, `license_id` | Sirf apne projects (DarziHub waghera) ke licenses mein |
+1. **Clients** tab: "+ Naya", naam aur phone zaroori, baaqi optional. Edit ho sakta hai, delete sirf Hub se.
+2. **Generate** tab: client chunein (ya wahin naya banayen), project, plan, client ki Device/Machine ID, muddat, zarurat ho to features badlein, **License generate karein**, phir Copy / Share.
+3. **Licenses** tab: har license ka status, search, filters, CSV. **Renew** naya key banata hai (wohi license, nayi muddat).
+4. Block / unblock / delete sirf Hub dashboard se hota hai. App sirf unka status dikhati hai.
 
-RetailX ke 4 projects ke licenses mein `project_code` nahi hota, taake unka purana code bina badlaav ke chale.
-Is baat ko RetailX ke apne Python code (`CryptoService.verify_license`) se dono taraf test kiya gaya hai:
-generator ka license wahan verify hota hai, aur wahan ka license generator verify karta hai.
+Ek device par ek project ka ek hi license chal sakta hai; dobara banane ke bajaye Renew use karein.
 
-## 2. Pehla setup (ek dafa)
+## 3. Sync
 
-1. App kholein, **Keys** tab par jayen.
-2. Do raaste hain:
-   - **Naye projects ke liye (tajweez):** "Key pair banayen" dabayen.
-   - **Purane RetailX clients ke liye:** un ki public key jis private key se bani thi, wohi **Import** karein (64 hex characters). Warna purane clients naye licenses ko reject kar denge.
-3. **Public key (hex)** copy karein. Yeh har client app mein lagani hai.
-4. **Private key export** se backup lein, kisi password manager mein rakhein.
-   Private key kabhi README, repo, chat ya client app mein na likhein.
+- Upar kone mein button: **Synced**, **N baaqi** (Hub par bhejna baaqi), **Sync zaroori**.
+- Offline kiya hua sab kuch "pending" rehta hai aur internet milte hi apne aap Hub par jata hai (app kholne par, net wapas aane par, ya button dabane par). Dobara bhejne se duplicate nahi banta.
+- Hub par jo badalta hai (block, extend, naye clients) wo bhi aa jata hai.
+- **Masail** (Settings > Sync masail, ya Licenses > "Sync masail"): agar Hub kisi record ko radd kare (jaise is device ka license pehle se maujood, ya Hub par blocked), wajah likhi hoti hai. **Dobara bhejein** ya **Hata dein** (sirf wo jo Hub ne kabhi qabool nahi kiya).
+- Phone mein agar client ka phone Hub ke kisi purane client se milta ho to wo usi se jod diya jata hai.
 
-## 3. Roz ka kaam
+## 4. Security aur hadden
 
-1. **Generate** tab: Project chunein (RetailX 360 Web, RetailX APK, D POS, Pharmacy, DarziHub, BP Journey, ContractHub).
-2. RetailX 360 Web ke liye plan chunein (Starter, Standard, Enterprise ERP). Features automatically bhar jate hain.
-3. Client ka naam, phone (sirf aap ke record ke liye), aur client ki Machine / Device ID likhein.
-4. Muddat chunein (7/30/90/180 din, 1 saal, lifetime ya custom date).
-5. Zarurat ho to **Features badlein** se module-wise toggles on/off karein, ya apna custom feature key add karein.
-6. **License generate karein**, phir Copy / Share. Client ko bhej dein.
-7. **History** tab mein har license ka record, search, project filter aur CSV export hai.
+- Keys sirf Keystore-backed secure storage mein, kabhi file ya screenshot mein nahi (screenshots band hain).
+- App 1 minute background mein rahe to dobara PIN mangti hai. 5 ghalat PIN ke baad intezar barhta jata hai.
+- **Offline hadd: 14 din.** Is se zyada sync na ho to Generate/Renew band ho jata hai, jab tak internet par sync na karein. (Offline signing ki wajah se kisi phone ko door se roka nahi ja sakta; Hub se "revoke" karne par agli sync par lock ho jata hai.)
+- Phone ki date peeche karne ki koshish par bhi lock; Hub ka time (sync par) expiry ke hisaab mein use hota hai.
+- Logout par signing keys phone se hat jati hain; clients/licenses data rehta hai.
+- Purani app ka data (licenses_v2) pehli dafa khulne par apne aap import hota hai ("Purani record"). Hub par bhejna **Settings > Purani app ke licenses** se aap ke control mein hai.
 
-**Projects** tab mein naya project add ho sakta hai, ya purane ke default features aur max users badal sakte hain.
+## 5. Developers ke liye
 
-## 4. Client apps mein license check lagana
+- `npm test` : unit tests (licenseCore + core logic).
+- `HUB_URL=... HUB_USER=... HUB_PASS=... npm run test:e2e` : asli Hub ke khilaf end-to-end sync test. **Sirf local/test Hub par chalayen**, yeh khud ka project/data banata hai.
+- Hub URL ka default `src/lib/config.ts` mein hai. Offline hadd bhi wahin (`OFFLINE_GRACE_DAYS`).
+- Code: `src/lib/` (pure logic: sync, generate, safety, hub client), `src/native/` (SQLite, SecureStore), `src/screens` aur `app/` (UI).
+
+## 5. Client apps mein license check lagana
 
 Sab clients ek hi kaam karte hain: `MPOS-LIC-` license ko public key se verify karte hain, phir machine ID, project code, muddat aur clock check karte hain.
 
-### 4.1 Expo / React Native (APK)
+### 5.1 Expo / React Native (APK)
 
 Files `client-sdk/expo/` mein hain.
 
@@ -58,8 +55,8 @@ Files `client-sdk/expo/` mein hain.
 2. Chaaron files apni app ke `src/license/` mein copy karein.
 3. `licenseClient.ts` mein badlein:
    ```ts
-   export const PROJECT_CODE = "darzihub";                    // Projects tab wala code
-   export const PUBLIC_KEY_HEX = "....";                      // Keys tab ki public key
+   export const PROJECT_CODE = "darzihub";                    // Hub Info tab mein project ka code
+   export const PUBLIC_KEY_HEX = "....";                      // Hub Info tab mein project ki public key (copy karein)
    ```
 4. Root layout mein:
    ```tsx
@@ -71,47 +68,15 @@ Files `client-sdk/expo/` mein hain.
 5. App ke andar plan aur features: `const lic = useLicense(); lic?.payload.features["premium"]`
 6. Muddat khatam hone se 3 din pehle app khud warning dikhati hai.
 
-### 4.2 Electron / Node exe
+## 6. Build
 
-Files `client-sdk/node/`: `deviceId.js`, `license.js`. `npm i tweetnacl`, phir `PROJECT_CODE` aur `PUBLIC_KEY_HEX` badlein.
+**Local:** `npm install`, `npm test`, `npx tsc --noEmit`.
 
-```js
-const { makeLicense } = require("./license/license");
-const lic = makeLicense(app.getPath("userData"));
-const r = lic.checkSaved();
-if (!r.ok) { /* activation window: lic.deviceId() dikhayen, lic.activate(text) se check karein */ }
-else if (r.can("accounting")) { /* feature check */ }
-```
+**GitHub (zip se):** repo mein `license-generator.zip` rakhein (push karein), unzip wali workflow (New Unzip / Extract ZIP / main.yml) usay khol kar project files replace karti hai, phir build workflow **APK** banati hai (Artifacts aur Releases mein). Ab sirf Android APK banta hai (exe/Electron hata diya gaya hai). Package name wahi hai (`com.arian6575000.licensegenerator`), isliye naya APK purani app ke upar install hota hai aur purana data (licenses) import ho jata hai.
 
-### 4.3 .NET exe
+## 7. Hadood aur ehtiyat
 
-File `client-sdk/dotnet/LicenseCheck.cs`, NuGet `BouncyCastle.Cryptography`.
-
-```csharp
-var r = LicenseCheck.CheckSaved();
-if (!r.Ok) { /* ActivationForm: LicenseCheck.GetMachineId() dikhayen, LicenseCheck.Activate(text) */ }
-bool acc = LicenseCheck.Can(r, "accounting");
-```
-
-### 4.4 RetailX ke purane projects
-
-Un ka verify code pehle se maujood hai (RetailX ki `CryptoService.verify_license`). Sirf unki public key wohi rehni chahiye jis private key se aap ab generate karte hain.
-Machine ID wahi likhein jo RetailX software khud dikhata hai (hardware hash wali ID).
-
-## 5. Build
-
-**Local:** `npm install`, `npm test`, `npm run web` (browser mein test).
-
-**GitHub (zip se):**
-1. Repo ke root mein sirf `license-generator.zip` rakhein. Zip ke andar files seedhi root par honi chahiyen (koi upar wala folder nahi).
-2. Actions > **Extract ZIP in Repository Root** > Run workflow. Yeh purani files hata kar zip khol deti hai aur phir `android-apk.yml` chalati hai.
-3. `.github/workflows/android-apk.yml` APK aur Windows exe banati hai (Artifacts aur Releases mein milti hain).
-4. Repo ke purane `main.yml`, `build.yml`, `build-1.yml` delete kar dein, warna har push par woh bhi chalti hain.
-
-## 6. Hadood aur ehtiyat
-
-- **Offline hone ki wajah se live control nahi:** killswitch, license ko door se block karna, ya expiry badhana mumkin nahi. Muddat badhani ho to naya license generate karein. Yeh sab RetailX Hub (online server) ka kaam hai.
-- Date peeche karne se bachne ke liye client "last seen" yaad rakhta hai.
+- **Block / unblock / expiry ka live control Hub ka kaam hai.** Generator ke zariye offline sirf naya ya renew license ban sakta hai.
+- Signing keys Hub se aati hain: unka asli backup Hub ke environment (Render/Vercel) mein hai. Client apps mein jo **public key** lagi hai wo us project ki Hub wali public key honi chahiye (Hub Info tab mein dekhein).
 - Offline license casual copying rokta hai, code patch karne wale se 100% nahi bachata (obfuscation madadgar hai).
-- Private key ka backup lein. Kho gayi to us key ke naye licenses nahi ban sakenge.
 - Android ID factory reset par badal jati hai, is liye reset ke baad naya license dena parta hai.
