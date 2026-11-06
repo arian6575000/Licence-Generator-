@@ -29,10 +29,10 @@ export function normalizePhone(p: string) {
 }
 
 function validateClient(i: ClientInput) {
-  if (!clean(i.clientName)) throw new Error("Client ka naam likhna zaroori hai");
+  if (!clean(i.clientName)) throw new Error("Client name is required");
   const ph = normalizePhone(clean(i.phone));
-  if (!/^\+?\d{7,15}$/.test(ph)) throw new Error("Phone number sahi likhein (7 se 15 digits)");
-  if (clean(i.email) && !/^\S+@\S+\.\S+$/.test(clean(i.email))) throw new Error("Email sahi nahi hai");
+  if (!/^\+?\d{7,15}$/.test(ph)) throw new Error("Enter a valid phone number (7 to 15 digits)");
+  if (clean(i.email) && !/^\S+@\S+\.\S+$/.test(clean(i.email))) throw new Error("Email address is not valid");
   return ph;
 }
 
@@ -40,9 +40,9 @@ export async function saveClient(repo: Repo, input: ClientInput, existingId?: st
   const phone = validateClient(input);
   const all = await repo.clients("", true);
   const dup = all.find((c) => c.id !== existingId && normalizePhone(c.phone) === phone && c.status !== "deleted");
-  if (dup) throw new Error(`Yeh phone pehle se "${dup.clientName}" ke naam par hai`);
+  if (dup) throw new Error(`This phone number already belongs to "${dup.clientName}"`);
   const prev = existingId ? all.find((c) => c.id === existingId) : undefined;
-  if (existingId && !prev) throw new Error("Client nahi mila");
+  if (existingId && !prev) throw new Error("Client not found");
   const rec: ClientRec = {
     id: prev?.id ?? uuid4(),
     clientName: clean(input.clientName),
@@ -67,9 +67,9 @@ export async function saveClient(repo: Repo, input: ClientInput, existingId?: st
 // ---------------- licenses ----------------
 async function findKey(vault: KeyVault, projectCode: string): Promise<StoredKey> {
   const raw = (await vault.get(`key:${projectCode}`)) ?? (await vault.get("key:__default__"));
-  if (!raw) throw new Error("Signing key nahi mili. Internet par Hub se sync karein");
+  if (!raw) throw new Error("Signing keys are missing on this phone. Connect to the internet and sync once");
   const k = JSON.parse(raw) as StoredKey;
-  if (!k.privateKey) throw new Error("Signing key kharab hai, dobara sync karein");
+  if (!k.privateKey) throw new Error("The saved signing key is damaged. Sync again to restore it");
   return k;
 }
 
@@ -97,10 +97,10 @@ export async function generateLicense(deps: Deps, a: GenerateArgs, realNow = Dat
   await requireGuard(deps);
   const { repo, vault } = deps;
   const client = await repo.client(a.clientId);
-  if (!client || client.status === "deleted") throw new Error("Pehle client chunein");
+  if (!client || client.status === "deleted") throw new Error("Choose a client first");
   const cat = await repo.catalog();
   const project = buildProjectList(cat).find((p: ProjectView) => p.code === a.projectCode);
-  if (!project) throw new Error("Project chunein");
+  if (!project) throw new Error("Choose an app");
 
   const now = new Date(await trustedNow(repo, realNow));
   const payload = buildPayload({
@@ -119,12 +119,12 @@ export async function generateLicense(deps: Deps, a: GenerateArgs, realNow = Dat
   const existing = (await repo.licenses({ projectCode: project.code })).find(
     (l) => sameDevice(l.machineId, payload.machine_id) && l.status !== "blocked" && (l.isLifetime || l.expiryDate >= isoDate(now))
   );
-  if (existing) throw new Error(`Is device par ${project.name} ka license pehle se chal raha hai (#${existing.id.slice(0, 8)}). Naya banane ke bajaye Renew use karein`);
+  if (existing) throw new Error(`This device already has an active ${project.name} license. Renew it instead of creating a new one`);
 
   const key = await findKey(vault, project.code);
   const license = signLicense(payload, key.privateKey);
   const check = verifyLicense(license, { publicKeyHex: publicKeyFromSeed(key.privateKey), machineId: payload.machine_id, now: now.getTime() });
-  if (!check.ok) throw new Error("Bani hui license khud verify nahi hui, dobara sync karke try karein");
+  if (!check.ok) throw new Error("The new license failed its own check. Sync once and try again");
 
   const rec: LicenseRec = {
     id: uuid4(),
@@ -159,10 +159,10 @@ export async function renewLicense(deps: Deps, licenseId: string, expiry: Expiry
   await requireGuard(deps);
   const { repo, vault } = deps;
   const old = await repo.license(licenseId);
-  if (!old) throw new Error("License nahi mili");
-  if (old.status === "blocked" || old.status === "suspended") throw new Error("Yeh license Hub par block hai. Pehle Hub se unblock karwayen");
-  if (!old.payload) throw new Error("Is license ka data parha nahi ja raha");
-  if (old.syncState === "legacy") throw new Error("Purana record pehle Hub par bhejein (Settings), phir renew karein");
+  if (!old) throw new Error("License not found");
+  if (old.status === "blocked" || old.status === "suspended") throw new Error("This license is blocked on the Hub. Unblock it there first");
+  if (!old.payload) throw new Error("This license cannot be read");
+  if (old.syncState === "legacy") throw new Error("Send this old record to the Hub first (Settings), then renew");
   const cat = await repo.catalog();
   const project = buildProjectList(cat).find((p) => p.code === old.projectCode);
 
@@ -182,7 +182,7 @@ export async function renewLicense(deps: Deps, licenseId: string, expiry: Expiry
   const key = await findKey(vault, old.projectCode);
   const license = signLicense(payload, key.privateKey);
   const check = verifyLicense(license, { publicKeyHex: publicKeyFromSeed(key.privateKey), machineId: payload.machine_id, now: now.getTime() });
-  if (!check.ok) throw new Error("Bani hui license khud verify nahi hui, dobara sync karke try karein");
+  if (!check.ok) throw new Error("The new license failed its own check. Sync once and try again");
 
   const rec: LicenseRec = {
     ...old,

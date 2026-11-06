@@ -77,7 +77,7 @@ export class HubClient {
       } catch {}
       return { status: res.status as number, ok: !!res.ok, json };
     } catch (e: any) {
-      throw new HubError("network", 0, e?.name === "AbortError" ? "Server ne waqt par jawab nahi diya" : "Internet / server se rabta nahi ho saka");
+      throw new HubError("network", 0, e?.name === "AbortError" ? "The server took too long to respond" : "Could not reach the server. Check your internet connection");
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -99,13 +99,13 @@ export class HubClient {
   async request<T = any>(method: string, path: string, body?: unknown, opts: { device?: boolean } = { device: true }): Promise<T> {
     for (let attempt = 0; attempt < 2; attempt++) {
       const s = await this.sessions.load();
-      if (!s) throw new HubError("auth", 401, "Pehle Hub mein login karein");
+      if (!s) throw new HubError("auth", 401, "Please sign in first");
       const headers: Record<string, string> = { Authorization: `Bearer ${s.accessToken}` };
       if (opts.device !== false) headers["X-Device-Id"] = s.deviceId;
       const r = await this.raw(method, `${cleanUrl(s.baseUrl)}${path}`, headers, body);
       if (r.status === 401 && attempt === 0) {
         if (await this.refresh()) continue;
-        throw new HubError("auth", 401, "Session khatam ho gaya, dobara login karein");
+        throw new HubError("auth", 401, "Your session has expired. Please sign in again");
       }
       if (r.ok) return r.json as T;
       const detail = detailOf(r.json, `Server error (${r.status})`);
@@ -113,7 +113,7 @@ export class HubClient {
       if (r.status === 403 && /revoked/i.test(detail)) throw new HubError("revoked", 403, detail);
       throw new HubError("http", r.status, detail);
     }
-    throw new HubError("auth", 401, "Session khatam ho gaya, dobara login karein");
+    throw new HubError("auth", 401, "Your session has expired. Please sign in again");
   }
 
   // ---- login ----
@@ -121,8 +121,8 @@ export class HubClient {
     const base = cleanUrl(args.baseUrl);
     if (!/^https?:\/\//i.test(base)) throw new HubError("http", 0, "Hub URL https:// se shuru hona chahiye");
     const r = await this.raw("POST", `${base}/api/v1/auth/token`, {}, { username: args.username.trim(), password: args.password });
-    if (r.status === 401 || r.status === 400) throw new HubError("auth", r.status, detailOf(r.json, "Username ya password ghalat hai"));
-    if (r.status === 429) throw new HubError("http", 429, detailOf(r.json, "Bohat zyada koshishen, 1 minute baad dobara karein"));
+    if (r.status === 401 || r.status === 400) throw new HubError("auth", r.status, detailOf(r.json, "Wrong username or password"));
+    if (r.status === 429) throw new HubError("http", 429, detailOf(r.json, "Too many attempts. Try again in a minute"));
     if (!r.ok || !r.json?.access_token) throw new HubError("http", r.status, detailOf(r.json, `Login fail (${r.status})`));
     await this.sessions.save({
       baseUrl: base,

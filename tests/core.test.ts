@@ -30,15 +30,15 @@ async function setup() {
   // ---- clients ----
   {
     const { repo } = await setup();
-    await assert.rejects(() => saveClient(repo, { clientName: "", phone: "03001234567" }), /naam/);
-    await assert.rejects(() => saveClient(repo, { clientName: "Ali", phone: "12" }), /Phone/);
+    await assert.rejects(() => saveClient(repo, { clientName: "", phone: "03001234567" }), /name is required/);
+    await assert.rejects(() => saveClient(repo, { clientName: "Ali", phone: "12" }), /phone/i);
     const a = await saveClient(repo, { clientName: " Ali ", businessName: "", phone: "0300-123 4567" });
     assert.equal(a.clientName, "Ali");
     assert.equal(a.businessName, "Ali");
     assert.equal(a.phone, "03001234567");
     assert.equal(a.syncState, "pending");
     assert.equal(a.revision, 1);
-    await assert.rejects(() => saveClient(repo, { clientName: "Bob", phone: "03001234567" }), /pehle se/);
+    await assert.rejects(() => saveClient(repo, { clientName: "Bob", phone: "03001234567" }), /already belongs/);
     const a2 = await saveClient(repo, { clientName: "Ali K", phone: "03001234567" }, a.id);
     assert.equal(a2.revision, 2);
     assert.equal(a2.id, a.id);
@@ -72,7 +72,7 @@ async function setup() {
     assert.equal(darzi.isLifetime, true);
     await assert.rejects(() => generateLicense(deps, { clientId: c.id, projectCode: "darzihub", planName: "x", machineId: "bad", maxUsers: 1, features: {}, expiry: { days: 1 } }), /Device ID/);
     // no client
-    await assert.rejects(() => generateLicense(deps, { clientId: "nope", projectCode: "darzihub", planName: "x", machineId: "A1B2-C3D4-E5F6-A7B8-C9D1", maxUsers: 1, features: {}, expiry: { days: 1 } }), /client/);
+    await assert.rejects(() => generateLicense(deps, { clientId: "nope", projectCode: "darzihub", planName: "x", machineId: "A1B2-C3D4-E5F6-A7B8-C9D1", maxUsers: 1, features: {}, expiry: { days: 1 } }), /Choose a client/);
 
     // renew keeps id + license_id, bumps revision, longer expiry
     const r = await renewLicense(deps, darzi.id, { days: 90 });
@@ -89,7 +89,7 @@ async function setup() {
     await assert.rejects(() => renewLicense(deps, web.id, { days: 30 }), /block/);
     // legacy must be pushed first
     await repo.store.putLicense({ ...darzi, syncState: "legacy" });
-    await assert.rejects(() => renewLicense(deps, darzi.id, { days: 30 }), /Purana/);
+    await assert.rejects(() => renewLicense(deps, darzi.id, { days: 30 }), /old record/);
     assert.equal(await queueLegacy(repo), 1);
     assert.equal((await repo.license(darzi.id))!.syncState, "pending");
 
@@ -110,8 +110,6 @@ async function setup() {
     const { repo, vault } = await setup();
     const c = await saveClient(repo, { clientName: "Ali", phone: "03001234567" });
     const args = { clientId: c.id, projectCode: "darzihub", planName: "standard", machineId: "A1B2-C3D4-E5F6-A7B8-C9D0", maxUsers: 1, features: {}, expiry: { days: 30 } } as const;
-    await repo.setNum("last_sync_at", Date.now() - 20 * 86400000);
-    await assert.rejects(() => generateLicense({ repo, vault }, { ...args }), /din se sync nahi/);
     await repo.setNum("last_sync_at", Date.now());
     await repo.setNum("max_seen_ms", Date.now() + 3 * 86400000);
     await assert.rejects(() => generateLicense({ repo, vault }, { ...args }), /date\/time/);
@@ -122,8 +120,7 @@ async function setup() {
     assert.ok((await generateLicense({ repo, vault }, { ...args })).id);
   }
   assert.equal(evaluateGuard({ hasKeys: false, lastSyncAt: 0, maxSeenMs: 0, revokedMsg: "", nowMs: 1 }).ok, false);
-  assert.equal(evaluateGuard({ hasKeys: true, lastSyncAt: 1000, maxSeenMs: 1000, revokedMsg: "", nowMs: 1000 + 13 * 86400000 }).ok, true);
-  assert.equal(evaluateGuard({ hasKeys: true, lastSyncAt: 1000, maxSeenMs: 1000, revokedMsg: "", nowMs: 1000 + 15 * 86400000 }).ok, false);
+  assert.equal(evaluateGuard({ hasKeys: true, lastSyncAt: 1000, maxSeenMs: 1000, revokedMsg: "", nowMs: 1000 + 400 * 86400000 }).ok, true); // a year offline is fine
 
   // ---- clock skew from the Hub is applied to the expiry date ----
   {

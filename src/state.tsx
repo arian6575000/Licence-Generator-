@@ -33,6 +33,7 @@ type Ctx = {
   locked: boolean;
   biometric: boolean;
   guard: Guard;
+  hasKeys: boolean;
   sync: SyncStatus;
   version: number; // bumps whenever local data changes; screens reload on it
   repo: Repo;
@@ -65,6 +66,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [locked, setLocked] = useState(true);
   const [biometric, setBio] = useState(false);
   const [guard, setGuard] = useState<Guard>({ ok: false, reason: "..." });
+  const [hasKeys, setHasKeys] = useState(false);
   const [sync, setSync] = useState<SyncStatus>(emptySync);
   const [version, setVersion] = useState(0);
   const running = useRef(false);
@@ -78,6 +80,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       repo.pendingCount(), repo.problemCount(), repo.legacyCount(), repo.getNum("last_sync_at"), vault.get("key:__default__"),
     ]);
     setSync((p) => ({ ...p, pending, problems, legacy, lastSyncAt }));
+    setHasKeys(!!hasKey);
     setGuard(await currentGuard(repo, !!hasKey));
     setVersion((v) => v + 1);
   }, []);
@@ -168,7 +171,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [refreshStatus, runSync]);
 
   const setupPin = useCallback(async (pin: string) => {
-    if (!isValidPin(pin)) throw new Error("PIN 4 se 8 digits ka hona chahiye");
+    if (!isValidPin(pin)) throw new Error("PIN must be 4 to 8 digits");
     const salt = newSalt();
     await savePin(hashPin(pin, salt), salt);
     await saveFails({ count: 0, until: 0 });
@@ -178,9 +181,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const unlock = useCallback(async (pin: string) => {
     const f = await loadFails();
-    if (f.until > Date.now()) return { ok: false, message: `${Math.ceil((f.until - Date.now()) / 1000)} second baad koshish karein` };
+    if (f.until > Date.now()) return { ok: false, message: `Try again in ${Math.ceil((f.until - Date.now()) / 1000)} seconds` };
     const rec = await loadPin();
-    if (!rec) return { ok: false, message: "PIN set nahi hai" };
+    if (!rec) return { ok: false, message: "No PIN is set" };
     if (verifyPin(pin, rec.salt, rec.hash)) {
       await saveFails({ count: 0, until: 0 });
       setLocked(false);
@@ -189,13 +192,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const count = f.count + 1;
     const wait = lockoutSeconds(count);
     await saveFails({ count, until: wait ? Date.now() + wait * 1000 : 0 });
-    return { ok: false, message: wait ? `Ghalat PIN. ${wait} second intezar karein` : `Ghalat PIN (${count})` };
+    return { ok: false, message: wait ? `Wrong PIN. Wait ${wait} seconds` : `Wrong PIN (${count})` };
   }, []);
 
   const tryBiometric = useCallback(async () => {
     try {
       if (!(await LocalAuth.hasHardwareAsync()) || !(await LocalAuth.isEnrolledAsync())) return false;
-      const r = await LocalAuth.authenticateAsync({ promptMessage: "License Generator kholein", cancelLabel: "PIN use karein", disableDeviceFallback: true });
+      const r = await LocalAuth.authenticateAsync({ promptMessage: "Unlock License Generator", cancelLabel: "Use PIN", disableDeviceFallback: true });
       if (r.success) setLocked(false);
       return r.success;
     } catch {
@@ -210,11 +213,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<Ctx>(
     () => ({
-      ready, session, hasPin, locked, biometric, guard, sync, version, repo, hub,
+      ready, session, hasPin, locked, biometric, guard, hasKeys, sync, version, repo, hub,
       deps: { repo, vault, hub },
       login, logout, runSync, afterChange, setupPin, unlock, tryBiometric, lock: () => setLocked(true), setBiometric,
     }),
-    [ready, session, hasPin, locked, biometric, guard, sync, version, login, logout, runSync, afterChange, setupPin, unlock, tryBiometric, setBiometric]
+    [ready, session, hasPin, locked, biometric, guard, hasKeys, sync, version, login, logout, runSync, afterChange, setupPin, unlock, tryBiometric, setBiometric]
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

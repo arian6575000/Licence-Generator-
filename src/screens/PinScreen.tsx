@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { Btn, Field, s } from "../components/ui";
 import { isValidPin } from "../lib/pin";
 import { useApp } from "../state";
+import { COMPANY_CREDIT } from "../lib/config";
 import { C } from "../theme";
 
 export function PinSetup() {
@@ -11,8 +12,8 @@ export function PinSetup() {
   const [b, setB] = useState("");
   const [err, setErr] = useState("");
   async function save() {
-    if (!isValidPin(a)) return setErr("PIN 4 se 8 digits ka hona chahiye");
-    if (a !== b) return setErr("Dono PIN barabar nahi");
+    if (!isValidPin(a)) return setErr("PIN must be 4 to 8 digits");
+    if (a !== b) return setErr("The two PINs do not match");
     try {
       await app.setupPin(a);
     } catch (e: any) {
@@ -21,11 +22,11 @@ export function PinSetup() {
   }
   return (
     <View style={[s.page, { padding: 24, gap: 14, justifyContent: "center" }]}>
-      <Text style={{ fontSize: 22, fontWeight: "800", color: C.text }}>App lock PIN banayen</Text>
-      <Text style={s.sub}>Signing keys is phone par hain, isliye app PIN ke peeche rahegi. Yeh PIN Hub ko nahi bheja jata.</Text>
-      <Field label="Naya PIN (4-8 digits)" value={a} onChangeText={setA} keyboardType="number-pad" secureTextEntry maxLength={8} />
-      <Field label="PIN dobara" value={b} onChangeText={setB} keyboardType="number-pad" secureTextEntry maxLength={8} error={err} />
-      <Btn label="PIN set karein" onPress={save} />
+      <Text style={{ fontSize: 22, fontWeight: "800", color: C.text }}>Create an app lock PIN</Text>
+      <Text style={s.sub}>The signing keys live on this phone, so the app is protected by a PIN. The PIN never leaves this phone.</Text>
+      <Field label="New PIN (4 to 8 digits)" value={a} onChangeText={setA} keyboardType="number-pad" secureTextEntry maxLength={8} />
+      <Field label="Repeat PIN" value={b} onChangeText={setB} keyboardType="number-pad" secureTextEntry maxLength={8} error={err} />
+      <Btn label="Set PIN" onPress={save} />
     </View>
   );
 }
@@ -49,17 +50,18 @@ export function PinUnlock() {
   return (
     <View style={[s.page, { padding: 24, gap: 14, justifyContent: "center" }]}>
       <Text style={{ fontSize: 22, fontWeight: "800", color: C.text }}>License Generator</Text>
-      <Text style={s.sub}>PIN likhein</Text>
+      <Text style={s.sub}>Enter your PIN</Text>
       <Field
         label="PIN" value={pin} onChangeText={(t) => { setPin(t); setMsg(""); }}
         keyboardType="number-pad" secureTextEntry maxLength={8} error={msg} onSubmitEditing={() => go(pin)}
       />
-      <Btn label="Kholein" onPress={() => go(pin)} disabled={pin.length < 4} />
+      <Btn label="Unlock" onPress={() => go(pin)} disabled={pin.length < 4} />
       {app.biometric && (
         <Pressable onPress={() => app.tryBiometric()} style={{ alignItems: "center", padding: 8 }}>
-          <Text style={{ color: C.primary, fontWeight: "600" }}>Fingerprint / face se kholein</Text>
+          <Text style={{ color: C.primary, fontWeight: "600" }}>Unlock with fingerprint / face</Text>
         </Pressable>
       )}
+      <Text style={{ textAlign: "center", color: C.faint, fontSize: 12, marginTop: 24 }}>{COMPANY_CREDIT}</Text>
     </View>
   );
 }

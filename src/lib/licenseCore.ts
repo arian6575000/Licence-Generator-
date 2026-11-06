@@ -110,15 +110,15 @@ export type BuildArgs = {
 export function buildPayload(a: BuildArgs): Payload {
   const now = a.now ?? new Date();
   let machine = a.machineId.trim();
-  if (!machine) throw new Error("Device / Machine ID likhna zaroori hai");
+  if (!machine) throw new Error("Device ID is required");
   if (a.idFormat === "hex20") {
     const n = normalizeDeviceId(machine);
-    if (!n) throw new Error("Device ID galat hai (20 hex characters chahiye)");
+    if (!n) throw new Error("Device ID is not valid. It needs 20 characters (0-9, A-F)");
     machine = n;
   }
   const client = a.clientName.trim();
-  if (!client) throw new Error("Client name likhna zaroori hai");
-  if (!Number.isFinite(a.maxUsers) || a.maxUsers < 1) throw new Error("Max users kam az kam 1");
+  if (!client) throw new Error("Client name is required");
+  if (!Number.isFinite(a.maxUsers) || a.maxUsers < 1) throw new Error("Max users must be at least 1");
 
   let expiry_date: string;
   let is_lifetime = false;
@@ -126,11 +126,11 @@ export function buildPayload(a: BuildArgs): Payload {
     expiry_date = LIFETIME_DATE;
     is_lifetime = true;
   } else if ("days" in a.expiry) {
-    if (!Number.isFinite(a.expiry.days) || a.expiry.days < 1) throw new Error("Din kam az kam 1 hon");
+    if (!Number.isFinite(a.expiry.days) || a.expiry.days < 1) throw new Error("Days must be at least 1");
     expiry_date = isoDate(new Date(now.getTime() + Math.floor(a.expiry.days) * 86400000));
   } else {
-    if (!isValidDate(a.expiry.date)) throw new Error("Date YYYY-MM-DD format mein likhein");
-    if (a.expiry.date < isoDate(now)) throw new Error("Expiry date guzar chuki hai");
+    if (!isValidDate(a.expiry.date)) throw new Error("Use the date format YYYY-MM-DD");
+    if (a.expiry.date < isoDate(now)) throw new Error("Expiry date is in the past");
     expiry_date = a.expiry.date;
   }
 

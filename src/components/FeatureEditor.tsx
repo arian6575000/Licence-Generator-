@@ -26,7 +26,7 @@ export default function FeatureEditor({ features, onChange }: Props) {
 
   return (
     <View style={{ gap: 8 }}>
-      <Text style={{ color: C.sub }}>{total} features on, {Object.keys(features).length} total</Text>
+      <Text style={{ color: C.sub }}>{total} of {Object.keys(features).length} features on</Text>
       {groups.map((g) => {
         const bools = g.keys.filter((k) => typeof features[k] === "boolean");
         const on = bools.filter((k) => features[k] === true).length;
@@ -40,8 +40,8 @@ export default function FeatureEditor({ features, onChange }: Props) {
             {isOpen && (
               <View style={{ paddingHorizontal: 10, paddingBottom: 8 }}>
                 <View style={{ flexDirection: "row", gap: 16, paddingVertical: 6 }}>
-                  <Pressable onPress={() => setMany(g.keys, true)}><Text style={{ color: C.primary }}>Sab on</Text></Pressable>
-                  <Pressable onPress={() => setMany(g.keys, false)}><Text style={{ color: C.danger }}>Sab off</Text></Pressable>
+                  <Pressable onPress={() => setMany(g.keys, true)}><Text style={{ color: C.primary }}>All on</Text></Pressable>
+                  <Pressable onPress={() => setMany(g.keys, false)}><Text style={{ color: C.danger }}>All off</Text></Pressable>
                 </View>
                 {g.keys.map((k) => {
                   const v = features[k];
@@ -74,7 +74,7 @@ export default function FeatureEditor({ features, onChange }: Props) {
           style={[s.input, { flex: 1 }]}
           value={newKey}
           onChangeText={setNewKey}
-          placeholder="Naya custom feature key (e.g. premium)"
+          placeholder="New custom feature key (e.g. premium)"
           autoCapitalize="none"
         />
         <Pressable style={s.add} onPress={addCustom}><Text style={{ color: "#fff", fontWeight: "700" }}>Add</Text></Pressable>

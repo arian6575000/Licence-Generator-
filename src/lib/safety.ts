@@ -1,5 +1,4 @@
 // Rules that decide whether this phone may issue licenses right now.
-import { OFFLINE_GRACE_DAYS } from "./config";
 import type { Repo } from "./store";
 
 export type Guard = { ok: true; daysSinceSync: number | null } | { ok: false; reason: string };
@@ -13,18 +12,19 @@ export type GuardInput = {
   maxSeenMs: number; // largest phone time ever observed
   revokedMsg: string;
   nowMs: number;
-  graceDays?: number;
 };
 
+// Generating a license never needs the server. The only requirements are:
+//  - the signing keys were downloaded once (first sync),
+//  - this phone was not revoked (the Hub tells us on the next sync),
+//  - the phone clock was not turned back.
+// There is NO limit on how long the phone may stay offline.
 export function evaluateGuard(g: GuardInput): Guard {
-  const grace = g.graceDays ?? OFFLINE_GRACE_DAYS;
-  if (g.revokedMsg) return { ok: false, reason: `Yeh device Hub se revoke ho chuka hai: ${g.revokedMsg}` };
-  if (!g.hasKeys || !g.lastSyncAt) return { ok: false, reason: "Pehle internet par Hub se sync karein (signing keys abhi nahi mili)" };
+  if (g.revokedMsg) return { ok: false, reason: `This device was revoked by the Hub: ${g.revokedMsg}` };
+  if (!g.hasKeys) return { ok: false, reason: "Sign in and sync once to download the signing keys. After that the app works fully offline." };
   if (g.maxSeenMs && g.nowMs < g.maxSeenMs - CLOCK_TOLERANCE_MS)
-    return { ok: false, reason: "Phone ki date/time peeche ki gayi lagti hai. Sahi time lagayen aur sync karein" };
-  const days = (g.nowMs - g.lastSyncAt) / DAY;
-  if (days > grace) return { ok: false, reason: `${Math.floor(days)} din se sync nahi hua (hadd ${grace} din). Internet par sync karein` };
-  return { ok: true, daysSinceSync: Math.max(0, days) };
+    return { ok: false, reason: "The phone date/time looks wrong (set back). Correct it to continue." };
+  return { ok: true, daysSinceSync: g.lastSyncAt ? Math.max(0, (g.nowMs - g.lastSyncAt) / DAY) : null };
 }
 
 // "Now" corrected by the last known difference between this phone and the Hub clock.

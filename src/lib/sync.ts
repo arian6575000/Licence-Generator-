@@ -111,7 +111,7 @@ function stateFrom(r: PushResult): { state: SyncState; msg: string } {
   }
   if (st === "accepted") return { state: "synced", msg: "" };
   if (st === "conflict") return { state: "conflict", msg: r.message ?? "Conflict" };
-  return { state: "rejected", msg: r.message ?? "Hub ne qabool nahi kiya" };
+  return { state: "rejected", msg: r.message ?? "The Hub did not accept this record" };
 }
 
 async function remapClient(repo: Repo, oldId: string, newId: string) {

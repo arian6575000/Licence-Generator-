@@ -13,7 +13,7 @@ export function licStatus(l: LicenseRec, todayIso: string): LicStatus {
 }
 
 export const STATUS_LABEL: Record<LicStatus, string> = {
-  active: "Active", expiring: "Jaldi khatam", expired: "Expired", blocked: "Blocked (Hub)", suspended: "Suspended (Hub)",
+  active: "Active", expiring: "Expiring soon", expired: "Expired", blocked: "Blocked", suspended: "Suspended",
 };
 
 export function daysLeft(l: LicenseRec, todayIso: string): number | null {
