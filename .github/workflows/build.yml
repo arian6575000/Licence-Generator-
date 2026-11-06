@@ -1,109 +1,72 @@
-name: Unzip and Build
+name: Build APK
 
-# Do tareeqe:
-#  1) Repo mein sirf license-generator.zip daal dein (root par) aur push karein: workflow khud unzip kar legi.
-#  2) Ya poora project folder seedha repo mein rakhein (package.json root par ya kisi folder mein).
-# Is file ko repo ke root mein .github/workflows/build.yml par rakhein.
+# Sirf build ke liye. Project repo ke root mein hai (unzip ho chuka).
+# Is file ko .github/workflows/build.yml par rakhein aur main.yml / unzip.yml delete kar dein,
+# warna ek push par teen workflows chalti hain.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '.github/workflows/unzip.yml'
+      - '*.zip'
+      - '*.md'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  prepare:
+  apk:
     runs-on: ubuntu-latest
-    outputs:
-      dir: ${{ steps.find.outputs.dir }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: Unzip project (agar zip maujood ho)
-        run: |
-          zip_file=$(find . -maxdepth 2 -name "license-generator*.zip" -not -path "./node_modules/*" | head -n 1)
-          if [ -n "$zip_file" ]; then
-            echo "Unzipping $zip_file"
-            unzip -q -o "$zip_file" -d _unzipped
-          else
-            echo "Zip nahi mili, repo ka code hi use hoga"
-          fi
-      - name: Project folder dhoondhein
-        id: find
-        run: |
-          pkg=$(find . -name package.json -not -path "*/node_modules/*" -not -path "./.git/*" -print0 \
-            | xargs -0 grep -l '"name": "license-generator"' | head -n 1)
-          [ -n "$pkg" ] || { echo "license-generator ka package.json nahi mila"; exit 1; }
-          dir=$(dirname "$pkg")
-          echo "Project: $dir"
-          echo "dir=$dir" >> "$GITHUB_OUTPUT"
-      - name: Project ko artifact bana kar agle jobs ko dein
-        run: tar -czf project.tgz -C "${{ steps.find.outputs.dir }}" --exclude=node_modules --exclude=.git .
-      - uses: actions/upload-artifact@v4
+
+      - uses: actions/setup-node@v4
         with:
-          name: project-source
-          path: project.tgz
-          retention-days: 1
+          node-version: 22
 
-  test:
-    needs: prepare
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { name: project-source }
-      - run: mkdir app && tar -xzf project.tgz -C app
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - name: Install, typecheck, test
-        working-directory: app
-        run: |
-          npm install --ignore-scripts --no-audit --no-fund
-          npm run typecheck
-          npm test
-
-  android-apk:
-    needs: [prepare, test]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { name: project-source }
-      - run: mkdir app && tar -xzf project.tgz -C app
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
       - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: 17 }
-      - name: Install
-        working-directory: app
-        run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Android project generate (prebuild)
-        working-directory: app
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
-      - name: APK build
-        working-directory: app/android
-        run: ./gradlew assembleRelease --no-daemon
-      - uses: actions/upload-artifact@v4
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx3g"
+
+      - name: Verify APK (zip integrity + signature) and give it a clear name
+        run: |
+          set -e
+          OUT=android/app/build/outputs/apk/release
+          ls -l "$OUT"
+          APK=$(ls "$OUT"/*.apk | head -n 1)
+          unzip -tq "$APK"
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner
+          "$APKSIGNER" verify --print-certs "$APK"
+          cp "$APK" "LicenseGenerator-v${{ github.run_number }}.apk"
+          ls -l LicenseGenerator-v${{ github.run_number }}.apk
+          sha256sum LicenseGenerator-v${{ github.run_number }}.apk | tee apk.sha256
+
+      - name: Upload APK artifact (GitHub zips artifacts, unzip after download)
+        uses: actions/upload-artifact@v4
         with:
           name: LicenseGenerator-apk
-          path: app/android/app/build/outputs/apk/release/*.apk
+          path: |
+            LicenseGenerator-v${{ github.run_number }}.apk
+            apk.sha256
 
-  windows-exe:
-    needs: [prepare, test]
-    runs-on: windows-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { name: project-source }
-      - run: |
-          mkdir app
-          tar -xzf project.tgz -C app
-        shell: bash
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - name: Install
-        working-directory: app
-        run: npm install --no-audit --no-fund
-      - name: EXE build
-        working-directory: app
-        run: npm run exe:build
-        env:
-          CI: "1"
-      - uses: actions/upload-artifact@v4
+      - name: Publish APK as a GitHub release
+        uses: softprops/action-gh-release@v2
         with:
-          name: LicenseGenerator-exe
-          path: app/release/*.exe
+          tag_name: apk-${{ github.run_number }}
+          name: License Generator APK #${{ github.run_number }}
+          body_path: apk.sha256
+          files: LicenseGenerator-v${{ github.run_number }}.apk
+          fail_on_unmatched_files: true
