@@ -5,8 +5,18 @@ import nacl from "tweetnacl";
 import { decodeBase64, encodeBase64 } from "tweetnacl-util";
 import type { FeatureMap } from "./catalog";
 
+export const KNOWN_PREFIXES = ["RetailX-LIC-", "RETAILX-LIC-", "retailx-lic-", "DPOS-LIC-", "dpos-lic-", "MPOS-LIC-", "mpos-lic-"];
 export const PREFIX = "MPOS-LIC-";
 export const LIFETIME_DATE = "2099-12-31";
+
+export function stripPrefix(key: string): { body: string; prefix: string } | null {
+  const k = (key || "").trim();
+  for (const p of KNOWN_PREFIXES) {
+    if (k.startsWith(p)) return { body: k.slice(p.length), prefix: p };
+  }
+  if (k.includes(".") && !k.startsWith("-")) return { body: k, prefix: "" };
+  return null;
+}
 
 export type Payload = {
   machine_id: string;
@@ -80,12 +90,18 @@ export function generateKeyPair(): KeyHex {
 
 // ---------- ids / dates ----------
 export function normalizeDeviceId(input: string): string | null {
-  const raw = input.toUpperCase().replace(/[^0-9A-F]/g, "");
-  if (raw.length !== 20) return null;
-  return raw.match(/.{4}/g)!.join("-");
+  const clean = (input || "").trim().toUpperCase();
+  const raw = clean.replace(/[^0-9A-F]/g, "");
+  if (raw.length === 20) return raw.match(/.{4}/g)!.join("-");
+  if (clean.length >= 3) return clean;
+  return null;
 }
 export function formatDeviceIdFromHex(hex: string): string {
-  return normalizeDeviceId(hex.slice(0, 20))!;
+  const raw = hex.toUpperCase().replace(/[^0-9A-F]/g, "");
+  if (raw.length >= 20) {
+    return raw.slice(0, 20).match(/.{4}/g)!.join("-");
+  }
+  return hex.toUpperCase();
 }
 export function newLicenseId(): string {
   return bytesToHex(nacl.randomBytes(5)).toUpperCase();
@@ -112,9 +128,13 @@ export function buildPayload(a: BuildArgs): Payload {
   let machine = a.machineId.trim();
   if (!machine) throw new Error("Device ID is required");
   if (a.idFormat === "hex20") {
-    const n = normalizeDeviceId(machine);
-    if (!n) throw new Error("Device ID is not valid. It needs 20 characters (0-9, A-F)");
-    machine = n;
+    const raw = machine.toUpperCase().replace(/[^0-9A-F]/g, "");
+    if (raw.length === 20) {
+      machine = raw.match(/.{4}/g)!.join("-");
+    } else {
+      const n = normalizeDeviceId(machine);
+      if (n) machine = n;
+    }
   }
   const client = a.clientName.trim();
   if (!client) throw new Error("Client name is required");
@@ -151,11 +171,11 @@ export function buildPayload(a: BuildArgs): Payload {
   return p;
 }
 
-export function signLicense(payload: Payload, privateKeyHex: string): string {
+export function signLicense(payload: Payload, privateKeyHex: string, prefix = PREFIX): string {
   const bytes = new TextEncoder().encode(pyJson(payload));
   const sk = nacl.sign.keyPair.fromSeed(hexToBytes(privateKeyHex.trim())).secretKey;
   const sig = nacl.sign.detached(bytes, sk);
-  return `${PREFIX}${b64u(bytes)}.${b64u(sig)}`;
+  return `${prefix}${b64u(bytes)}.${b64u(sig)}`;
 }
 
 // ---------- verify (same logic goes into client apps) ----------
@@ -175,9 +195,9 @@ export function verifyLicense(
   }
 ): VerifyResult {
   try {
-    const key = license.trim();
-    if (!key.startsWith(PREFIX)) return { ok: false, reason: "format" };
-    const parts = key.slice(PREFIX.length).split(".");
+    const stripped = stripPrefix(license);
+    if (!stripped) return { ok: false, reason: "format" };
+    const parts = stripped.body.split(".");
     if (parts.length !== 2) return { ok: false, reason: "format" };
     const body = unb64u(parts[0]);
     const sig = unb64u(parts[1]);
@@ -188,8 +208,18 @@ export function verifyLicense(
     if (opts.projectCode && p.project_code && p.project_code !== opts.projectCode)
       return { ok: false, reason: "project" };
     if (opts.machineId !== undefined) {
-      const norm = (s: string) => s.trim().toUpperCase();
-      if (norm(p.machine_id) !== norm(opts.machineId)) return { ok: false, reason: "machine" };
+      const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const a = (opts.machineId || "").trim().toUpperCase();
+      const b = (p.machine_id || "").trim().toUpperCase();
+      let match = (a === b) || (norm(a) === norm(b));
+      if (!match) {
+        const aParts = a.split("-").filter(Boolean);
+        const bParts = b.split("-").filter(Boolean);
+        if (aParts.length >= 3 && bParts.length >= 3) {
+          match = aParts.slice(-3).join("-") === bParts.slice(-3).join("-");
+        }
+      }
+      if (!match) return { ok: false, reason: "machine" };
     }
     const now = opts.now ?? Date.now();
     if (opts.lastSeen && now + 5 * 60000 < opts.lastSeen) return { ok: false, reason: "clock" };
